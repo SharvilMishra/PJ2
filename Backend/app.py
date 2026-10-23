@@ -1,0 +1,1 @@
+"""Backend entry point placeholder for the PJ2 wellness dashboard."""
