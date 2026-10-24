@@ -1,6 +1,19 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { createRoot } from "react-dom/client";
+import {
+  browserLocalPersistence,
+  browserSessionPersistence,
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  sendPasswordResetEmail,
+  setPersistence,
+  signInWithEmailAndPassword,
+  signOut,
+  updateProfile,
+  type User,
+} from "firebase/auth";
+import { auth } from "./firebase";
 import "./styles.css";
 
 type Page = "home" | "trends" | "settings" | "profile";
@@ -39,29 +52,42 @@ const metrics = [
   { label: "Hydration", value: "1.8", unit: "litres", change: "72%", icon: "drop" as const, tint: "blue", note: "of your daily goal" },
 ];
 
-function Avatar({ large = false }: { large?: boolean }) { return <span className={`avatar ${large ? "avatar-large" : ""}`}>EP</span>; }
+function Avatar({ large = false, name = "" }: { large?: boolean; name?: string }) {
+  const initials = name.trim().split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join("").toUpperCase() || "Z";
+  return <span className={`avatar ${large ? "avatar-large" : ""}`}>{initials}</span>;
+}
 function HeaderTitle({ eyebrow, title, copy, right }: { eyebrow: string; title: string; copy: string; right?: ReactNode }) { return <div className="section-title"><div><div className="eyebrow">{eyebrow}</div><h1>{title}</h1><p>{copy}</p></div>{right}</div>; }
 function App() {
-  const [page, setPage] = useState<Page>("home"), [signedIn, setSignedIn] = useState(false), [drawer, setDrawer] = useState(false);
+  const [page, setPage] = useState<Page>("home"), [user, setUser] = useState<User | null>(null), [authLoading, setAuthLoading] = useState(true), [drawer, setDrawer] = useState(false);
   const [launch, setLaunch] = useState<"show" | "exit" | "done">("show");
   useEffect(() => { const exitTimer = window.setTimeout(() => setLaunch("exit"), 1200); const doneTimer = window.setTimeout(() => setLaunch("done"), 1500); return () => { window.clearTimeout(exitTimer); window.clearTimeout(doneTimer); }; }, []);
+  useEffect(() => onAuthStateChanged(auth, currentUser => {
+    setUser(currentUser);
+    setAuthLoading(false);
+  }), []);
   const [dark, setDark] = useState(false), [weekly, setWeekly] = useState(true), [daily, setDaily] = useState(false);
-  const [name, setName] = useState("Emily Park"), [email, setEmail] = useState("emily.park@example.com");
+  const [name, setName] = useState("Your name"), [email, setEmail] = useState("");
+  useEffect(() => {
+    if (!user) { setName("Your name"); setEmail(""); return; }
+    setName(user.displayName || user.email?.split("@")[0] || "Your name");
+    setEmail(user.email || "");
+  }, [user]);
   const [toast, setToast] = useState("");
   const notice = (s: string) => { setToast(s); window.setTimeout(() => setToast(""), 2600); };
   const go = (p: Page) => { setPage(p); setDrawer(false); };
-  if (launch !== "done") return <LaunchScreen exiting={launch === "exit"}/>;
-  if (!signedIn) return <Login onLogin={() => setSignedIn(true)} />;
+  const handleSignOut = async () => { try { await signOut(auth); setPage("home"); } catch { notice("Couldn't sign out. Please try again."); } };
+  if (launch !== "done" || authLoading) return <LaunchScreen exiting={launch === "exit"}/>;
+  if (!user) return <Login onDisplayName={setName} />;
   const titles: Record<Page, string> = { home: "Overview", trends: "Your trends", settings: "Settings", profile: "My profile" };
   return <div className={`app ${dark ? "dim" : ""}`}>
     <aside className={`sidebar ${drawer ? "open" : ""}`}>
       <div className="brand"><img src="/assets/zuno-logo-transparent.png" alt="Zuno — Feel better, live brighter"/><button className="close-nav" onClick={() => setDrawer(false)} aria-label="Close menu"><Icon name="close"/></button></div>
       <div className="nav-label">YOUR SPACE</div><nav aria-label="Main navigation">{nav.map(n => <button key={n.id} onClick={() => go(n.id)} className={`nav-link ${page === n.id ? "current" : ""}`}><Icon name={n.icon}/><span>{n.label}</span>{page === n.id && <i/>}</button>)}</nav>
       <div className="side-spacer"/><div className="gentle-note"><span className="note-icon"><Icon name="heart"/></span><b>You're doing great</b><p>Progress is made one day at a time.</p><button onClick={() => go("trends")}>See your progress <Icon name="arrow" size={14}/></button></div>
-      <button className="mini-profile" onClick={() => go("profile")}><Avatar/><span><b>{name}</b><small>Your wellness profile</small></span><Icon name="chevron" size={15}/></button>
+      <button className="mini-profile" onClick={() => go("profile")}><Avatar name={name}/><span><b>{name}</b><small>{email}</small></span><Icon name="chevron" size={15}/></button><button className="auth-signout" onClick={handleSignOut}>Sign out</button>
     </aside>
     {drawer && <button className="backdrop" onClick={() => setDrawer(false)} aria-label="Close menu"/>}
-    <div className="main"><header className="topbar"><button className="menu-button" onClick={() => setDrawer(true)} aria-label="Open menu"><Icon name="menu"/></button><div className="crumb">My wellness <Icon name="chevron" size={13}/><b>{titles[page]}</b></div><div className="top-actions"><span className="today"><i/> Preview · sample data</span><button className="notify" onClick={() => notice("You're all caught up!")} aria-label="Notifications"><Icon name="bell"/><i/></button><button className="top-user" onClick={() => go("profile")} aria-label="Open profile"><Avatar/></button></div></header>
+    <div className="main"><header className="topbar"><button className="menu-button" onClick={() => setDrawer(true)} aria-label="Open menu"><Icon name="menu"/></button><div className="crumb">My wellness <Icon name="chevron" size={13}/><b>{titles[page]}</b></div><div className="top-actions"><span className="today"><i/> Preview · sample data</span><button className="notify" onClick={() => notice("You're all caught up!")} aria-label="Notifications"><Icon name="bell"/><i/></button><button className="top-user" onClick={() => go("profile")} aria-label="Open profile"><Avatar name={name}/></button></div></header>
       <main className="content">
         {page === "home" && <Home name={name} go={go}/>}
         {page === "trends" && <Trends/>}
@@ -92,11 +118,67 @@ function Trends() { return <><HeaderTitle eyebrow="YOUR PATTERNS" title="Small s
 function Toggle({on,change,label}:{on:boolean;change:()=>void;label:string}) { return <button className={`toggle ${on?"on":""}`} role="switch" aria-checked={on} aria-label={label} onClick={change}><i/></button>; }
 function Settings({dark,setDark,weekly,setWeekly,daily,setDaily,save}:{dark:boolean;setDark:(v:boolean)=>void;weekly:boolean;setWeekly:(v:boolean)=>void;daily:boolean;setDaily:(v:boolean)=>void;save:()=>void}) { return <><HeaderTitle eyebrow="PREFERENCES" title="Make Zuno yours." copy="A few small choices to make your space feel right."/><div className="settings-layout"><div className="settings-stack"><section className="card setting-card"><div className="setting-heading"><span><Icon name="bell"/></span><div><h2>Notifications</h2><p>Choose what you'd like to hear about.</p></div></div><Setting title="Weekly wellness recap" copy="A gentle summary of your week, every Sunday." on={weekly} change={()=>setWeekly(!weekly)}/><Setting title="Daily check-in reminder" copy="A soft nudge to log how you're feeling." on={daily} change={()=>setDaily(!daily)}/></section><section className="card setting-card"><div className="setting-heading"><span className="lavender"><Icon name={dark?"moon":"sun"}/></span><div><h2>Appearance</h2><p>Make your dashboard comfortable to look at.</p></div></div><div className="appearance"><div><b>Color theme</b><small>Choose light or dim.</small></div><div className="segmented"><button className={!dark?"selected":""} onClick={()=>setDark(false)}><Icon name="sun" size={14}/> Light</button><button className={dark?"selected":""} onClick={()=>setDark(true)}><Icon name="moon" size={14}/> Dim</button></div></div></section><section className="card setting-card"><div className="setting-heading"><span><Icon name="heart"/></span><div><h2>Your data, your choice</h2><p>Your wellness information stays private to you.</p></div></div><div className="private-row"><span><b>Wellness data</b><small>Only you can see your personal dashboard.</small></span><span className="private-badge"><Icon name="check" size={12}/> Private</span></div></section><button className="primary save-button" onClick={save}>Save preferences <Icon name="check" size={15}/></button></div><aside className="card settings-aside"><div className="leaf-art"><span className="leaf-orb"/><i>✦</i></div><h3>Make room for what feels good.</h3><p>Your preferences are here to support your routines, at your own pace.</p></aside></div></>; }
 function Setting({title,copy,on,change}:{title:string;copy:string;on:boolean;change:()=>void}) { return <div className="setting-row"><span><b>{title}</b><small>{copy}</small></span><Toggle on={on} change={change} label={title}/></div>; }
-function Profile({name,setName,email,setEmail,save}:{name:string;setName:(v:string)=>void;email:string;setEmail:(v:string)=>void;save:()=>void}) { return <><HeaderTitle eyebrow="YOUR DETAILS" title="A little about you." copy="Your profile helps make your wellness space feel personal."/><section className="card profile-card"><div className="profile-cover"><span>✦</span></div><div className="profile-body"><div className="profile-heading"><Avatar large/><div><h2>{name||"Your name"}</h2><small><i/> Your wellness journey</small></div><button className="outline edit" onClick={()=>document.getElementById("profile-name")?.focus()}><Icon name="edit" size={14}/> Edit profile</button></div><div className="profile-fields"><label>Full name<input id="profile-name" value={name} onChange={e=>setName(e.target.value)} placeholder="Your name"/></label><label>Email address<input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com"/></label><label>Birthday<input value="April 14, 1990" readOnly/></label><label>Activity style<select defaultValue="Active"><option>Active</option><option>Lightly active</option><option>Getting started</option><option>Prefer not to say</option></select></label></div><div className="profile-save"><p>Your profile is just for you. You can update it whenever you like.</p><button className="primary" onClick={save}>Save changes <Icon name="check" size={15}/></button></div></div></section><div className="profile-note"><Icon name="heart" size={15}/> Your wellbeing is personal. Take things at your own pace.</div></>; }
+function Profile({name,setName,email,setEmail,save}:{name:string;setName:(v:string)=>void;email:string;setEmail:(v:string)=>void;save:()=>void}) { return <><HeaderTitle eyebrow="YOUR DETAILS" title="A little about you." copy="Your profile helps make your wellness space feel personal."/><section className="card profile-card"><div className="profile-cover"><span>✦</span></div><div className="profile-body"><div className="profile-heading"><Avatar large name={name}/><div><h2>{name||"Your name"}</h2><small><i/> Your wellness journey</small></div><button className="outline edit" onClick={()=>document.getElementById("profile-name")?.focus()}><Icon name="edit" size={14}/> Edit profile</button></div><div className="profile-fields"><label>Full name<input id="profile-name" value={name} onChange={e=>setName(e.target.value)} placeholder="Your name"/></label><label>Email address<input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com"/></label><label>Birthday<input value="April 14, 1990" readOnly/></label><label>Activity style<select defaultValue="Active"><option>Active</option><option>Lightly active</option><option>Getting started</option><option>Prefer not to say</option></select></label></div><div className="profile-save"><p>Your profile is just for you. You can update it whenever you like.</p><button className="primary" onClick={save}>Save changes <Icon name="check" size={15}/></button></div></div></section><div className="profile-note"><Icon name="heart" size={15}/> Your wellbeing is personal. Take things at your own pace.</div></>; }
 function LaunchScreen({exiting}:{exiting:boolean}) { return <main className={`launch-screen ${exiting?"launch-exit":""}`} aria-label="Loading Zuno wellness"><div className="launch-glow"/><span className="launch-orbit orbit-one"/><span className="launch-orbit orbit-two"/><div className="launch-content"><img src="/assets/zuno-logo-transparent.png" alt="Zuno — Feel better, live brighter"/><p>Your gentler wellness space</p><div className="launch-progress"><i/></div><small>MAKING SPACE FOR YOUR WELLBEING</small></div><span className="launch-leaf leaf-left">✦</span><span className="launch-leaf leaf-right">✧</span></main>; }
 
-function Login({onLogin}:{onLogin:()=>void}) {
-  const [show,setShow]=useState(false),[recovery,setRecovery]=useState(false);
+function firebaseErrorMessage(error: unknown): string {
+  const code = typeof error === "object" && error !== null && "code" in error ? String(error.code) : "";
+  switch (code) {
+    case "auth/invalid-credential":
+    case "auth/wrong-password":
+    case "auth/user-not-found": return "That email and password don't match. Check them and try again.";
+    case "auth/email-already-in-use": return "An account already uses this email. Sign in instead.";
+    case "auth/weak-password": return "Choose a password with at least 6 characters.";
+    case "auth/invalid-email": return "Enter a valid email address.";
+    case "auth/too-many-requests": return "Too many attempts. Please wait a moment and try again.";
+    case "auth/network-request-failed": return "A network error occurred. Check your connection and try again.";
+    case "auth/operation-not-allowed": return "Email and password sign-in is not enabled for this Firebase project yet.";
+    default: return "Authentication failed. Please try again.";
+  }
+}
+
+function Login({ onDisplayName }: { onDisplayName: (name: string) => void }) {
+  const [show, setShow] = useState(false), [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [email, setEmail] = useState(""), [password, setPassword] = useState(""), [displayName, setDisplayName] = useState("");
+  const [remember, setRemember] = useState(true), [busy, setBusy] = useState(false), [feedback, setFeedback] = useState("");
+  const [feedbackIsError, setFeedbackIsError] = useState(false);
+
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true); setFeedback("");
+    try {
+      await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
+      if (mode === "signup") {
+        const credential = await createUserWithEmailAndPassword(auth, email.trim(), password);
+        if (displayName.trim()) { await updateProfile(credential.user, { displayName: displayName.trim() }); onDisplayName(displayName.trim()); }
+      } else {
+        await signInWithEmailAndPassword(auth, email.trim(), password);
+      }
+    } catch (error) {
+      setFeedback(firebaseErrorMessage(error)); setFeedbackIsError(true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resetPassword() {
+    if (!email.trim()) {
+      setFeedback("Enter your email address above, then choose Forgot password again.");
+      setFeedbackIsError(true);
+      return;
+    }
+    setBusy(true); setFeedback("");
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+      setFeedback("If an account exists for this email, a password reset link has been sent.");
+      setFeedbackIsError(false);
+    } catch (error) {
+      setFeedback(firebaseErrorMessage(error)); setFeedbackIsError(true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return <div className="login">
     <section className="login-right water-stage" aria-label="Zuno wellness">
       <div className="water-field" aria-hidden="true"><span className="water-ribbon ribbon-a"/><span className="water-ribbon ribbon-b"/><span className="water-ribbon ribbon-c"/><span className="water-glint glint-a"/><span className="water-glint glint-b"/><svg className="water-current" viewBox="0 0 760 960" preserveAspectRatio="none"><defs><linearGradient id="current" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#dfff80" stopOpacity=".02"/><stop offset=".45" stopColor="#eaffb2" stopOpacity=".78"/><stop offset="1" stopColor="#6cae19" stopOpacity=".06"/></linearGradient><filter id="water-ripple" x="-18%" y="-18%" width="136%" height="136%"><feTurbulence type="fractalNoise" baseFrequency=".006 .012" numOctaves="2" seed="7" result="ripple"><animate attributeName="baseFrequency" values=".005 .01;.009 .018;.005 .01" dur="16s" repeatCount="indefinite"/></feTurbulence><feDisplacementMap in="SourceGraphic" in2="ripple" scale="24" xChannelSelector="R" yChannelSelector="G"/></filter></defs><path d="M-90 -20 C140 120 95 220 270 330 S420 520 535 620 S670 815 850 1000" fill="none" stroke="url(#current)" strokeWidth="125" strokeLinecap="round" opacity=".18" filter="url(#water-ripple)"/><path d="M-120 25 C95 145 75 260 245 365 S405 550 510 650 S650 830 820 1020" fill="none" stroke="url(#current)" strokeWidth="58" strokeLinecap="round" opacity=".28" filter="url(#water-ripple)"/><path d="M-75 -75 C180 85 130 205 300 310 S455 490 565 600 S700 785 890 950" fill="none" stroke="#efffc3" strokeWidth="2.5" strokeLinecap="round" opacity=".32" filter="url(#water-ripple)"/></svg></div>
@@ -108,16 +190,20 @@ function Login({onLogin}:{onLogin:()=>void}) {
     <section className="login-left login-panel">
       <div className="login-brand"><img src="/assets/zuno-logo-transparent.png" alt="Zuno — Feel better, live brighter"/></div>
       <div className="login-box">
-        <div className="welcome-label"><span>✦</span> YOUR GENTLER WELLNESS SPACE</div><h1>Welcome back.</h1><p>A little care goes a long way. Sign in to see how you're doing.</p>
-        <form onSubmit={e=>{e.preventDefault();onLogin();}}>
-          <label htmlFor="email">Email address</label><div className="input"><span>✉</span><input id="email" type="email" placeholder="you@example.com" required autoComplete="email"/></div>
-          <div className="password-label"><label htmlFor="password">Password</label><button type="button" onClick={()=>setRecovery(!recovery)}>Forgot password?</button></div>
-          <div className="input"><span>⌑</span><input id="password" type={show?"text":"password"} placeholder="Enter your password" required autoComplete="current-password"/><button type="button" onClick={()=>setShow(!show)}>{show?"Hide":"Show"}</button></div>
-          {recovery&&<div className="recovery-note">Password recovery will be available when sign-in is connected.</div>}
-          <label className="remember"><input type="checkbox" defaultChecked/> Keep me signed in</label><button className="primary sign-in" type="submit">Sign in <Icon name="arrow" size={16}/></button>
+        <div className="welcome-label"><span>✦</span> YOUR GENTLER WELLNESS SPACE</div>
+        <h1>{mode === "signin" ? "Welcome back." : "Create your account."}</h1>
+        <p>{mode === "signin" ? "A little care goes a long way. Sign in to see how you're doing." : "Start your wellness space with an email and password."}</p>
+        <form onSubmit={submit}>
+          {mode === "signup" && <><label htmlFor="display-name">Your name</label><div className="input"><span>✦</span><input id="display-name" value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Your name" autoComplete="name" required/></div></>}
+          <label htmlFor="email">Email address</label><div className="input"><span>✉</span><input id="email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" required autoComplete="email"/></div>
+          <div className="password-label"><label htmlFor="password">Password</label>{mode === "signin" && <button type="button" onClick={resetPassword} disabled={busy}>Forgot password?</button>}</div>
+          <div className="input"><span>⌑</span><input id="password" type={show ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} placeholder={mode === "signup" ? "At least 6 characters" : "Enter your password"} required minLength={6} autoComplete={mode === "signup" ? "new-password" : "current-password"}/><button type="button" onClick={() => setShow(!show)}>{show ? "Hide" : "Show"}</button></div>
+          {mode === "signin" && <label className="remember"><input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)}/> Keep me signed in</label>}
+          {feedback && <div className={`auth-feedback ${feedbackIsError ? "is-error" : "is-success"}`} role={feedbackIsError ? "alert" : "status"}>{feedback}</div>}
+          <button className="primary sign-in" type="submit" disabled={busy}>{busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"} <Icon name="arrow" size={16}/></button>
         </form>
         <div className="login-divider"><i/><span>YOUR WELLNESS, YOUR WAY</span><i/></div>
-        <p className="new-user">New to Zuno? <button onClick={onLogin}>Explore your space <Icon name="arrow" size={13}/></button></p>
+        <p className="new-user">{mode === "signin" ? "New to Zuno?" : "Already have an account?"} <button type="button" onClick={() => { setMode(mode === "signin" ? "signup" : "signin"); setFeedback(""); }}>{mode === "signin" ? "Create account" : "Sign in"} <Icon name="arrow" size={13}/></button></p>
         <div className="privacy"><Icon name="check" size={14}/> Your personal wellness data stays private.</div>
       </div>
       <footer>© 2025 Zuno Wellness <span>•</span> Made for everyday wellbeing</footer>
@@ -126,3 +212,4 @@ function Login({onLogin}:{onLogin:()=>void}) {
 }
 
 createRoot(document.getElementById("root")!).render(<App/>);
+
