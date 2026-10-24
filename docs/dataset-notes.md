@@ -2,7 +2,7 @@
 
 ## Coverage and grain
 
-The dictionary describes 365 rows, one per day, for 1 January through 31 December 2025. The subject, Emily Park (35), is explicitly fictional.
+The dictionary describes 365 rows, one per day, for 1 January through 31 December 2025. The subject, Emily Park (35), is explicitly fictional. `Datasets/wellness_daily.csv` now provides one synthetic demonstration row per day, generated deterministically for dashboard/API development. These values were not measured or supplied as source observations.
 
 ## Fields
 
@@ -14,6 +14,6 @@ The dictionary describes 365 rows, one per day, for 1 January through 31 Decembe
 
 ## Interpretation
 
-Stress ranges from 1 to 10, with higher values indicating more stress. Mood ranges from 1 (low) to 5 (high). Deep sleep is a percentage of total sleep. The dictionary notes that higher HRV usually indicates better recovery and lower resting heart rate is generally associated with fitness; these are contextual signals, not diagnoses.
+Stress ranges from 1 to 10, with higher values indicating more stress. Mood ranges from 1 (low) to 5 (high). Deep sleep is a percentage of total sleep. The dictionary notes that higher HRV usually indicates better recovery and lower resting heart rate is generally associated with fitness; these are contextual signals, not diagnoses. The synthetic records are illustrative and must not be represented as measured health history or medical guidance.
 
-Validate date continuity, categorical values, numeric ranges, missing values, and sleep time handling when the dataset is added. Preserve the original input.
+The API validates date uniqueness and weekday consistency, categorical values, the dictionary-defined score ranges, numeric parsing, and 24-hour bedtime/wake-time formatting. Preserve any future supplied original input unchanged.

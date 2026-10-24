@@ -1,6 +1,6 @@
 # Zuno Wellness Frontend
 
-Responsive React and Vite interface for the PJ2 wellness dashboard. The current interface uses illustrative sample values based on the PJ2 data dictionary; connect the daily dataset and API when they are available.
+Responsive React and Vite interface for the PJ2 wellness dashboard. The current interface uses illustrative sample values; the local API serves the synthetic daily dataset in `Datasets/wellness_daily.csv` for development. The UI is not yet connected to the API.
 
 ## Run locally
 

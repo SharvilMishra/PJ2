@@ -6,7 +6,7 @@ Zuno is a responsive wellness dashboard for exploring daily activity, sleep, rec
 
 - `About/` — project brief and scope
 - `Backend/` — API and data loading/analysis services
-- `Datasets/` — original source data and data dictionary
+- `Datasets/` — data dictionary and synthetic demonstration data
 - `docs/` — architecture, dataset notes, and decisions
 - `Frontend/` — React/Vite interface
 
@@ -14,4 +14,4 @@ Zuno is a responsive wellness dashboard for exploring daily activity, sleep, rec
 
 The frontend includes a sign-in entry screen, wellness overview, trends, responsive navigation, settings, profile, and a light/dim appearance control. See [Frontend/README.md](Frontend/README.md) for setup instructions.
 
-The current figures are illustrative values. The supplied data dictionary describes the planned daily fields; the actual wellness dataset has not yet been supplied. Authentication, API integration, and persistent profile/preferences are not connected yet.
+`Datasets/wellness_daily.csv` contains generated demonstration values for the fictional profile, not measured wellness data. The backend serves those records when run locally. Authentication and persistent profile/preferences are not connected yet.
