@@ -5,10 +5,12 @@ import {
   browserLocalPersistence,
   browserSessionPersistence,
   createUserWithEmailAndPassword,
+  GoogleAuthProvider,
   onAuthStateChanged,
   sendPasswordResetEmail,
   setPersistence,
   signInWithEmailAndPassword,
+  signInWithPopup,
   signOut,
   updateProfile,
   type User,
@@ -132,7 +134,11 @@ function firebaseErrorMessage(error: unknown): string {
     case "auth/invalid-email": return "Enter a valid email address.";
     case "auth/too-many-requests": return "Too many attempts. Please wait a moment and try again.";
     case "auth/network-request-failed": return "A network error occurred. Check your connection and try again.";
-    case "auth/operation-not-allowed": return "Email and password sign-in is not enabled for this Firebase project yet.";
+    case "auth/operation-not-allowed": return "This sign-in method is not enabled in Firebase yet.";
+    case "auth/unauthorized-domain": return "Add this website's domain to Firebase Authentication's authorized domains.";
+    case "auth/popup-blocked": return "Your browser blocked the Google sign-in popup. Allow popups for this site and try again.";
+    case "auth/popup-closed-by-user": return "Google sign-in was closed before it finished.";
+    case "auth/account-exists-with-different-credential": return "An account with this email already exists. Sign in using its existing method first.";
     default: return "Authentication failed. Please try again.";
   }
 }
@@ -154,6 +160,18 @@ function Login({ onDisplayName }: { onDisplayName: (name: string) => void }) {
       } else {
         await signInWithEmailAndPassword(auth, email.trim(), password);
       }
+    } catch (error) {
+      setFeedback(firebaseErrorMessage(error)); setFeedbackIsError(true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function signInWithGoogle() {
+    setBusy(true); setFeedback("");
+    try {
+      await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
+      await signInWithPopup(auth, new GoogleAuthProvider());
     } catch (error) {
       setFeedback(firebaseErrorMessage(error)); setFeedbackIsError(true);
     } finally {
@@ -202,7 +220,11 @@ function Login({ onDisplayName }: { onDisplayName: (name: string) => void }) {
           {feedback && <div className={`auth-feedback ${feedbackIsError ? "is-error" : "is-success"}`} role={feedbackIsError ? "alert" : "status"}>{feedback}</div>}
           <button className="primary sign-in" type="submit" disabled={busy}>{busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"} <Icon name="arrow" size={16}/></button>
         </form>
-        <div className="login-divider"><i/><span>YOUR WELLNESS, YOUR WAY</span><i/></div>
+        <div className="login-divider"><i/><span>OR CONTINUE WITH</span><i/></div>
+        <button className="google-signin" type="button" onClick={signInWithGoogle} disabled={busy}>
+          <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5Z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.91a11.1 11.1 0 0 1-4.78 7.28l7.73 6C44.37 38.13 46.98 31.9 46.98 24.55Z"/><path fill="#FBBC05" d="M10.54 28.59A14.4 14.4 0 0 1 9.75 24c0-1.59.27-3.13.76-4.59l-7.98-6.19A23.9 23.9 0 0 0 0 24c0 3.87.93 7.53 2.56 10.78l7.98-6.19Z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.9-5.77l-7.73-6c-2.14 1.44-4.88 2.29-8.17 2.29-6.26 0-11.57-4.22-13.46-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48Z"/></svg>
+          Continue with Google
+        </button>
         <p className="new-user">{mode === "signin" ? "New to Zuno?" : "Already have an account?"} <button type="button" onClick={() => { setMode(mode === "signin" ? "signup" : "signin"); setFeedback(""); }}>{mode === "signin" ? "Create account" : "Sign in"} <Icon name="arrow" size={13}/></button></p>
         <div className="privacy"><Icon name="check" size={14}/> Your personal wellness data stays private.</div>
       </div>
@@ -212,4 +234,3 @@ function Login({ onDisplayName }: { onDisplayName: (name: string) => void }) {
 }
 
 createRoot(document.getElementById("root")!).render(<App/>);
-
